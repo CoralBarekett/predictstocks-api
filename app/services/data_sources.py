@@ -63,19 +63,23 @@ async def fetch_twitter_posts(ticker: str) -> List[SocialMediaPost]:
         logger.warning(f"[Twitter] Error fetching posts: {e}")
         return []
 
-async def fetch_news(ticker: str) -> List[str]:
+async def fetch_news_google(ticker: str) -> List[str]:
     try:
+        cx = settings.GOOGLE_SEARCH_ENGINE_ID 
+        api_key = settings.GOOGLE_NEWS_API_KEY 
+
+        query = f"{ticker} stock news"
+        url = (
+            f"https://www.googleapis.com/customsearch/v1?"
+            f"q={query}&cx={cx}&key={api_key}"
+        )
+
         async with httpx.AsyncClient(timeout=10) as client:
-            url = (
-                f"https://newsapi.org/v2/everything?q={ticker}"
-                f"&from={(datetime.utcnow() - timedelta(days=30)).strftime('%Y-%m-%d')}"
-                f"&sortBy=publishedAt&apiKey={settings.GOOGLE_NEWS_API_KEY}"
-            )
             response = await client.get(url)
             data = response.json()
-            return [a["title"] for a in data.get("articles", [])][:10]
+            return [item["title"] for item in data.get("items", [])][:10]
     except Exception as e:
-        logger.warning(f"[Google News] Error fetching news: {e}")
+        logger.warning(f"[Google Custom Search] Error fetching news: {e}")
         return []
 
 async def fetch_historical_prices(ticker: str) -> List[float]:
