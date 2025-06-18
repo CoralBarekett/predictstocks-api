@@ -2,9 +2,10 @@ import time
 import httpx
 import logging
 from datetime import datetime, timedelta
-from typing import List
+from typing import List, Dict
 from app.models.schemas import SocialMediaPost
 from app.core.config import settings
+from newspaper import Article
 
 logger = logging.getLogger(__name__)
 
@@ -63,12 +64,12 @@ async def fetch_twitter_posts(ticker: str) -> List[SocialMediaPost]:
         logger.warning(f"[Twitter] Error fetching posts: {e}")
         return []
 
-async def fetch_news_google(ticker: str) -> List[str]:
+async def fetch_news_google(ticker: str) -> List[SocialMediaPost]:
     try:
         cx = settings.GOOGLE_SEARCH_ENGINE_ID 
         api_key = settings.GOOGLE_NEWS_API_KEY 
-
         query = f"{ticker} stock news"
+
         url = (
             f"https://www.googleapis.com/customsearch/v1?"
             f"q={query}&cx={cx}&key={api_key}"
@@ -77,10 +78,32 @@ async def fetch_news_google(ticker: str) -> List[str]:
         async with httpx.AsyncClient(timeout=10) as client:
             response = await client.get(url)
             data = response.json()
-            return [item["title"] for item in data.get("items", [])][:10]
+            logger.info(f"[Google Custom Search] Fetched {len(data.get('items', []))} items for query: {query}")
+
+            posts = []
+            for item in data.get("items", [])[:10]:
+                article_url = item.get("link")
+                article_text = scrape_article_text(article_url)
+                if article_text:
+                    posts.append(SocialMediaPost(
+                        platform="google_news",
+                        content=article_text,
+                        timestamp=datetime.utcnow()
+                    ))
+            return posts
     except Exception as e:
         logger.warning(f"[Google Custom Search] Error fetching news: {e}")
         return []
+
+def scrape_article_text(url: str) -> str:
+    try:
+        article = Article(url)
+        article.download()
+        article.parse()
+        return article.text
+    except Exception as e:
+        logger.warning(f"[Scraper] Failed to parse article at {url}: {e}")
+        return ""
 
 async def fetch_historical_prices(ticker: str) -> List[float]:
     try:

@@ -8,10 +8,10 @@ async def generate_prediction(req: StockPredictionRequest) -> StockPrediction:
 
     reddit_posts = await data_sources.fetch_reddit_posts(req.ticker) if req.include_reddit else []
     twitter_posts = await data_sources.fetch_twitter_posts(req.ticker) if req.include_posts else []
-    headlines = await data_sources.fetch_news(req.ticker)
+    google_news_posts = await data_sources.fetch_news_google(req.ticker)
     prices = await data_sources.fetch_historical_prices(req.ticker)
 
-    all_texts = [p.content for p in reddit_posts + twitter_posts] + headlines
+    all_texts = [p.content for p in reddit_posts + twitter_posts + google_news_posts]
     sentiment = ai_reasoning.analyze_sentiment(all_texts)
 
     direction = "up" if "positive" in sentiment.lower() else "down"
@@ -38,9 +38,23 @@ async def generate_prediction(req: StockPredictionRequest) -> StockPrediction:
         sentiment_analysis=sentiment,
         confidence=0.75,
         supporting_data={
-            "post_count": len(reddit_posts + twitter_posts),
+            "post_count": len(reddit_posts + twitter_posts + google_news_posts),
             "influencer_post_count": len(twitter_posts)
         },
-        posts=reddit_posts + twitter_posts,
+        posts=reddit_posts + twitter_posts + google_news_posts,
         processing_time=round(time.time() - start, 2)
     )
+
+from fastapi import APIRouter
+from app.models.schemas import StockPredictionRequest, StockPrediction
+from app.services.predictor import generate_prediction
+
+router = APIRouter()
+
+@router.get("/health")
+def health():
+    return {"status": "ok"}
+
+@router.post("/predict", response_model=StockPrediction)
+async def predict_stock(req: StockPredictionRequest):
+    return await generate_prediction(req)
