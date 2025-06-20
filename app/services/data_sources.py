@@ -48,8 +48,6 @@ async def fetch_reddit_posts(ticker: str) -> List[SocialMediaPost]:
         logger.warning(f"[Reddit] Error fetching posts: {e}")
         return []
     
-# async def fetch_twitter_posts(ticker: str, max_results: int = 30) -> List[SocialMediaPost]:
-#     return []
 
 async def fetch_twitter_posts(ticker: str, max_results: int = 30) -> List[SocialMediaPost]:
     logger.info(f"[Twitter/API] Fetching tweets for: {ticker}")
@@ -110,19 +108,47 @@ async def fetch_news_google(ticker: str) -> List[SocialMediaPost]:
             posts = []
             for item in data.get("items", [])[:10]:
                 article_url = item.get("link")
-                article_text = scrape_article_text(article_url)
-                if article_text:
+                title = item.get("title", "")
+                snippet = item.get("snippet", "")
+                timestamp = datetime.utcnow()
+
+                text_content = ""
+
+                # Skip known blocked domains
+                if "investors.com" in article_url:
+                    logger.warning(f"[Scraper] Skipping blocked domain: {article_url}")
+                else:
+                    try:
+                        article = Article(article_url)
+                        article.download()
+                        article.parse()
+                        text_content = article.text.strip()
+
+                        if text_content:
+                            logger.info(f"[Scraper] Successfully parsed article: {article_url}")
+                    except Exception as e:
+                        logger.warning(f"[Scraper] Failed to parse article at {article_url}: {e}")
+
+                # Use full article content if available, otherwise fallback to title/snippet
+                final_content = text_content or title or snippet
+
+                if final_content:
                     posts.append(SocialMediaPost(
                         platform="google_news",
-                        content=article_text,
-                        timestamp=datetime.utcnow()
+                        content=final_content,
+                        timestamp=timestamp,
+                        url=article_url
                     ))
+                else:
+                    logger.warning(f"[Scraper] No usable content from: {article_url}")
+
             if not posts:
                 logger.warning(f"[Google News] No articles parsed successfully for {ticker}")
             return posts
     except Exception as e:
         logger.warning(f"[Google Custom Search] Error fetching news: {e}")
         return []
+
 
 def scrape_article_text(url: str) -> str:
     try:
