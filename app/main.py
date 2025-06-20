@@ -1,6 +1,14 @@
 from fastapi import FastAPI
-from app.api.routes import router
 from fastapi.middleware.cors import CORSMiddleware
+from app.api.routes import router
+from loguru import logger
+import os
+
+# Ensure logs directory exists
+os.makedirs("logs", exist_ok=True)
+
+# Configure loguru logger
+logger.add("logs/predictstocks.log", rotation="1 MB", enqueue=True)
 
 app = FastAPI(title="PredictStocks API", version="1.0")
 

@@ -33,7 +33,7 @@ async def fetch_reddit_posts(ticker: str) -> List[SocialMediaPost]:
             search_url = f"https://oauth.reddit.com/r/stocks/search.json?q={ticker}&restrict_sr=1&sort=new"
             resp = await client.get(search_url, headers=headers)
             data = resp.json()
-            return [
+            posts = [
                 SocialMediaPost(
                     platform="reddit",
                     content=post["data"]["title"],
@@ -41,28 +41,55 @@ async def fetch_reddit_posts(ticker: str) -> List[SocialMediaPost]:
                 )
                 for post in data["data"]["children"]
             ][:10]
+            if not posts:
+                logger.warning(f"[Reddit] No posts found for {ticker}")
+            return posts
     except Exception as e:
         logger.warning(f"[Reddit] Error fetching posts: {e}")
         return []
+    
+# async def fetch_twitter_posts(ticker: str, max_results: int = 30) -> List[SocialMediaPost]:
+#     return []
 
-async def fetch_twitter_posts(ticker: str) -> List[SocialMediaPost]:
+async def fetch_twitter_posts(ticker: str, max_results: int = 30) -> List[SocialMediaPost]:
+    logger.info(f"[Twitter/API] Fetching tweets for: {ticker}")
+    tweets: List[SocialMediaPost] = []
+
     try:
-        headers = {"Authorization": f"Bearer {settings.TWITTER_BEARER_TOKEN}"}
+        bearer_token = settings.TWITTER_BEARER_TOKEN
+        headers = {
+            "Authorization": f"Bearer {bearer_token}"
+        }
+
+        query = f"{ticker} lang:en -is:retweet"
+        url = (
+            f"https://api.twitter.com/2/tweets/search/recent?"
+            f"query={query}&max_results={min(max_results, 100)}&tweet.fields=created_at,author_id,text"
+        )
+
         async with httpx.AsyncClient(timeout=10) as client:
-            url = f"https://api.twitter.com/2/tweets/search/recent?query={ticker}&max_results=10&tweet.fields=created_at"
             response = await client.get(url, headers=headers)
-            data = response.json()
-            return [
-                SocialMediaPost(
+            if response.status_code != 200:
+                logger.warning(f"[Twitter/API] Failed to fetch tweets: {response.status_code} {response.text}")
+                return []
+            data = response.json().get("data", [])
+
+            for tweet in data:
+                tweets.append(SocialMediaPost(
                     platform="twitter",
                     content=tweet["text"],
-                    timestamp=datetime.strptime(tweet["created_at"], "%Y-%m-%dT%H:%M:%S.%fZ")
-                )
-                for tweet in data.get("data", [])
-            ]
+                    timestamp=datetime.fromisoformat(tweet["created_at"].replace("Z", "+00:00")),
+                    url=f"https://twitter.com/i/web/status/{tweet['id']}",
+                    username=tweet.get("author_id")
+                ))
+
+        logger.info(f"[Twitter/API] Fetched {len(tweets)} tweets")
+        return tweets
+
     except Exception as e:
-        logger.warning(f"[Twitter] Error fetching posts: {e}")
+        logger.warning(f"[Twitter/API] Error fetching tweets: {e}")
         return []
+
 
 async def fetch_news_google(ticker: str) -> List[SocialMediaPost]:
     try:
@@ -90,6 +117,8 @@ async def fetch_news_google(ticker: str) -> List[SocialMediaPost]:
                         content=article_text,
                         timestamp=datetime.utcnow()
                     ))
+            if not posts:
+                logger.warning(f"[Google News] No articles parsed successfully for {ticker}")
             return posts
     except Exception as e:
         logger.warning(f"[Google Custom Search] Error fetching news: {e}")
@@ -111,7 +140,10 @@ async def fetch_historical_prices(ticker: str) -> List[float]:
             url = f"https://www.alphavantage.co/query?function=TIME_SERIES_DAILY&symbol={ticker}&apikey={settings.ALPHA_VANTAGE_API_KEY}"
             response = await client.get(url)
             data = response.json().get("Time Series (Daily)", {})
-            return [float(day["4. close"]) for _, day in sorted(data.items())][-30:]
+            prices = [float(day["4. close"]) for _, day in sorted(data.items())][-30:]
+            if not prices:
+                logger.warning(f"[Alpha Vantage] No prices returned for {ticker}")
+            return prices
     except Exception as e:
         logger.warning(f"[Alpha Vantage] Fallback to Finnhub due to: {e}")
 
@@ -124,7 +156,10 @@ async def fetch_historical_prices(ticker: str) -> List[float]:
             )
             response = await client.get(url)
             data = response.json()
-            return data.get("c", [])
+            prices = data.get("c", [])
+            if not prices:
+                logger.warning(f"[Finnhub] No closing prices returned for {ticker}")
+            return prices
     except Exception as e:
         logger.error(f"[Finnhub] Failed to fetch prices: {e}")
         return []
