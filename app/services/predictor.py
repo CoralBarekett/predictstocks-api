@@ -33,11 +33,13 @@ async def generate_prediction(req: StockPredictionRequest) -> StockPrediction:
     reddit_posts = await data_sources.fetch_reddit_posts(req.ticker) if req.include_reddit else []
     twitter_posts = await data_sources.fetch_twitter_posts(req.ticker) if req.include_posts else []
     google_news_posts = await data_sources.fetch_news_google(req.ticker)
+    yahoo_finance_data = await data_sources.fetch_yahoo_finance_data(req.ticker)
     prices = await data_sources.fetch_historical_prices(req.ticker)
 
     logger.info(f"[Reddit] Posts fetched: {len(reddit_posts)}")
     logger.info(f"[Twitter] Posts fetched: {len(twitter_posts)}")
     logger.info(f"[Google News] Posts fetched: {len(google_news_posts)}")
+    logger.info(f"[Yahoo Finance] Data fetched: {yahoo_finance_data}")
     logger.info(f"[Prices] Data fetched: {prices}")
 
     all_texts = [p.content for p in reddit_posts + twitter_posts + google_news_posts]
@@ -59,7 +61,7 @@ async def generate_prediction(req: StockPredictionRequest) -> StockPrediction:
         predicted_price = None
         price_diff = 0
         price_change_percent = 0
-        confidence_score = min(confidence_score, 0.2)  # מורידים את הביטחון
+        confidence_score = min(confidence_score, 0.2)  # Reduce confidence
 
     return StockPrediction(
         ticker=req.ticker,
@@ -82,7 +84,8 @@ async def generate_prediction(req: StockPredictionRequest) -> StockPrediction:
         confidence=confidence_score,
         supporting_data={
             "post_count": post_count,
-            "influencer_post_count": len(twitter_posts)
+            "influencer_post_count": len(twitter_posts),
+            "yahoo_finance_snapshot": yahoo_finance_data
         },
         posts=reddit_posts + twitter_posts + google_news_posts,
         processing_time=round(time.time() - start, 2)
