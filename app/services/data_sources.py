@@ -2,14 +2,14 @@ import time
 import httpx
 import logging
 from datetime import datetime, timedelta
-from typing import List, Dict
+from typing import List
 from app.models.schemas import SocialMediaPost
 from app.core.config import settings
 from newspaper import Article
 
 logger = logging.getLogger(__name__)
 
-HEADERS = {"User-Agent": settings.REDDIT_USER_AGENT}
+# HEADERS = {"User-Agent": settings.REDDIT_USER_AGENT}
 
 async def fetch_reddit_posts(ticker: str) -> List[SocialMediaPost]:
     try:
@@ -148,7 +148,26 @@ async def fetch_news_google(ticker: str) -> List[SocialMediaPost]:
     except Exception as e:
         logger.warning(f"[Google Custom Search] Error fetching news: {e}")
         return []
+    
+async def fetch_yahoo_finance_data(ticker: str) -> list[dict]:
+    url = "https://yahoo-finance15.p.rapidapi.com/api/v1/markets/news"
+    headers = {
+        "x-rapidapi-key": settings.YAHOO_API_KEY,
+        "x-rapidapi-host": settings.YAHOO_API_HOST
+    }
+    params = {
+        "tickers": ticker
+    }
 
+    try:
+        async with httpx.AsyncClient(timeout=10) as client:
+            response = await client.get(url, headers=headers, params=params)
+            response.raise_for_status()
+            data = response.json()
+            return data.get("body", [])
+    except Exception as e:
+        print(f"[Yahoo Finance] Error: {e}")
+        return []
 
 def scrape_article_text(url: str) -> str:
     try:
